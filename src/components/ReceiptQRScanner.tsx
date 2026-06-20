@@ -121,16 +121,42 @@ export default function ReceiptQRScanner({
   // Enumerate video devices
   const loadDevices = async () => {
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+        return;
+      }
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(d => d.kind === 'videoinput');
       setAvailableDevices(videoDevices);
-      if (videoDevices.length > 0 && !selectedDeviceId) {
-        setSelectedDeviceId(videoDevices[0].deviceId);
+      
+      if (videoDevices.length > 0) {
+        // If no device is selected, or if the previously selected device is no longer present,
+        // select the first available device.
+        const stillExists = videoDevices.some(d => d.deviceId === selectedDeviceId);
+        if (!selectedDeviceId || !stillExists) {
+          setSelectedDeviceId(videoDevices[0].deviceId);
+        }
       }
     } catch (e) {
       console.warn('Could not enumerate cameras: ', e);
     }
   };
+
+  // Listen for plug-and-play camera connection events
+  useEffect(() => {
+    const handleDeviceChange = async () => {
+      await loadDevices();
+      triggerBanner('Plug-and-play camera hardware change detected. Device list refreshed.', false);
+    };
+
+    if (navigator.mediaDevices && typeof navigator.mediaDevices.addEventListener === 'function') {
+      navigator.mediaDevices.addEventListener('devicechange', handleDeviceChange);
+    }
+    return () => {
+      if (navigator.mediaDevices && typeof navigator.mediaDevices.removeEventListener === 'function') {
+        navigator.mediaDevices.removeEventListener('devicechange', handleDeviceChange);
+      }
+    };
+  }, [selectedDeviceId]);
 
   // Launch Camera feed
   const startCamera = async () => {
@@ -154,6 +180,9 @@ export default function ReceiptQRScanner({
 
       setCameraActive(true);
       setCameraPermission(true);
+      
+      // Force reload available devices after permission is granted to ensure clear labels are retrieved
+      await loadDevices();
       
       // Start decoding loops
       scanningLoopRef.current = requestAnimationFrame(decodeCameraFrame);
@@ -551,20 +580,52 @@ export default function ReceiptQRScanner({
               )}
 
               {/* Device Selector Overlay */}
-              {cameraActive && availableDevices.length > 1 && (
-                <div className="absolute bottom-3 left-3 right-3 bg-slate-900/90 text-white p-2 rounded-lg border border-slate-705 flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-slate-400 font-mono">Lens:</span>
-                  <select
-                    value={selectedDeviceId}
-                    onChange={(e) => setSelectedDeviceId(e.target.value)}
-                    className="flex-1 bg-transparent hover:bg-slate-800 rounded font-normal text-[10px] text-white py-1 cursor-pointer focus:outline-none"
-                  >
-                    {availableDevices.map((dev, idx) => (
-                      <option key={dev.deviceId} value={dev.deviceId} className="bg-slate-900 text-white">
-                        {dev.label || `Webcam Camera System #${idx + 1}`}
-                      </option>
-                    ))}
-                  </select>
+              {cameraActive && (
+                <div className="absolute bottom-3 left-3 right-3 bg-slate-950/95 text-white p-3 rounded-xl border border-slate-800 shadow-xl flex flex-col gap-2 backdrop-blur-md">
+                  <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                    <span className="text-[10px] uppercase tracking-wider font-extrabold text-blue-400 font-mono flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                      Active Optical Sources
+                    </span>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await loadDevices();
+                        triggerBanner('Scanned media accessories for new mobile or plug-and-play lenses.', false);
+                      }}
+                      className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors flex items-center gap-1 cursor-pointer text-[9.5px] font-bold"
+                      title="Refresh loaded webcam devices & external cameras"
+                    >
+                      <RefreshCcw className="h-3.5 w-3.5" />
+                      <span>Refresh Devices</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10.5px] font-black text-slate-400 font-mono shrink-0">Selected Lens:</span>
+                    {availableDevices.length > 0 ? (
+                      <select
+                        value={selectedDeviceId}
+                        onChange={(e) => setSelectedDeviceId(e.target.value)}
+                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-100 px-2 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium"
+                      >
+                        {availableDevices.map((dev, idx) => {
+                          const isExternal = dev.label.toLowerCase().includes('external') || dev.label.toLowerCase().includes('usb') || dev.label.toLowerCase().includes('camera 2');
+                          return (
+                            <option key={dev.deviceId} value={dev.deviceId} className="bg-slate-950 text-slate-100">
+                              {dev.label || `Webcam Camera System #${idx + 1}`} {isExternal ? '🔌 (External)' : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-slate-400 italic">No additional lenses detected.</span>
+                    )}
+                  </div>
+
+                  <p className="text-[9px] text-slate-400 leading-tight">
+                    💡 <strong>Plug-&-Play:</strong> Plug in your external USB OTG camera, endoscope, or digital microscope macro-lens, then tap <strong>"Refresh"</strong> to engage the secondary stream.
+                  </p>
                 </div>
               )}
             </>
