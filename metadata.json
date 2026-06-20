@@ -1,0 +1,10 @@
+{
+  "name": "FinTrack Expense & Analytics",
+  "description": "An enterprise-grade Expense Tracker and Financial Analytics platform with smart AI spending advice, custom budgets, savings goals, and report exports.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
